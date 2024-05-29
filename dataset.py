@@ -48,18 +48,24 @@ def collate_fn(
     return data
 
 
-def get_dataset():
+def get_dataset(processor: TrOCRProcessor):
     with open("transliter.json") as f:
         manjurules = json.load(f)
 
     new_tokens = [i["roman"] for i in manjurules]
-
+    processor.tokenizer.add_tokens(list(new_tokens))
+    image_size = processor.feature_extractor.size["height"]
     train_augment_and_transform = A.Compose(
         [
             A.SmallestMaxSize(max_size=64, p=1.0),
             A.PadIfNeeded(min_height=64, min_width=192, p=1.0, value=(255, 255, 255)),
-            A.LongestMaxSize(max_size=384, p=1.0),
-            A.PadIfNeeded(min_height=384, min_width=384, p=1.0, value=(255, 255, 255)),
+            A.LongestMaxSize(max_size=image_size, p=1.0),
+            A.PadIfNeeded(
+                min_height=image_size,
+                min_width=image_size,
+                p=1.0,
+                value=(255, 255, 255),
+            ),
             # A.Rotate(limit=10, p=0.5),
             A.OneOf(
                 [
@@ -79,14 +85,16 @@ def get_dataset():
         [
             A.SmallestMaxSize(max_size=64, p=1.0),
             A.PadIfNeeded(min_height=64, min_width=192, p=1.0, value=(255, 255, 255)),
-            A.LongestMaxSize(max_size=384, p=1.0),
-            A.PadIfNeeded(min_height=384, min_width=384, p=1.0, value=(255, 255, 255)),
+            A.LongestMaxSize(max_size=image_size, p=1.0),
+            A.PadIfNeeded(
+                min_height=image_size,
+                min_width=image_size,
+                p=1.0,
+                value=(255, 255, 255),
+            ),
         ],
     )
 
-    processor = TrOCRProcessor.from_pretrained("microsoft/trocr-base-handwritten")
-    processor.tokenizer.add_tokens(list(new_tokens))
-    
     train_transform_batch = partial(
         augment_and_transform_batch,
         transform=train_augment_and_transform,
@@ -96,10 +104,13 @@ def get_dataset():
         augment_and_transform_batch, transform=validation_transform, processor=processor
     )
 
-
     dataset = load_dataset(
         "csv",
-        data_files={"train": "data/train.csv", "validation": "data/val.csv", "test": "data/test.csv"},
+        data_files={
+            "train": "data/train.csv",
+            "validation": "data/val.csv",
+            "test": "data/test.csv",
+        },
     )
 
     dataset["train"] = dataset["train"].with_transform(train_transform_batch)
@@ -108,4 +119,4 @@ def get_dataset():
     )
     dataset["test"] = dataset["test"].with_transform(validation_transform_batch)
 
-    return dataset, processor
+    return dataset
