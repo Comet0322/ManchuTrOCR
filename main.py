@@ -16,6 +16,17 @@ from transformers.trainer_utils import get_last_checkpoint
 from dataset import collate_fn, get_dataset
 
 
+def calculate_cra(predicted_sequences, ground_truth_sequences):
+    total_characters = 0
+    correct_characters = 0
+
+    for pred_seq, gt_seq in zip(predicted_sequences, ground_truth_sequences):
+        total_characters += len(gt_seq)
+        correct_characters += sum(p == g for p, g in zip(pred_seq, gt_seq))
+
+    return correct_characters / total_characters if total_characters > 0 else 0
+
+
 @torch.no_grad()
 def compute_metrics(
     evaluation_results: EvalPrediction,
@@ -27,12 +38,22 @@ def compute_metrics(
     exact_match_metric = load_metric("exact_match")
     results = exact_match_metric.compute(predictions=predictions, references=references)
 
-    # accuracy_metric = load_metric("accuracy")
-    # concatenate all predictions and references to compute character accuracy
     # remove special tokens
-    # predictions = sum(predictions, [])
-    # references = sum(references, [])
-    # results.update(accuracy_metric.compute(predictions=predictions, references=references))
+    predicted_sequences = [
+        [i for i in p if i not in processor.tokenizer.all_special_ids]
+        for p in predictions
+    ]
+    reference_sequences = [
+        [i for i in r if i not in processor.tokenizer.all_special_ids]
+        for r in references
+    ]
+    cer_metric = load_metric("cer")
+    results["CRA"] = 100 * (
+        1
+        - cer_metric.compute(
+            predictions=predicted_sequences, references=reference_sequences
+        )
+    )
 
     return results
 
@@ -83,15 +104,11 @@ if __name__ == "__main__":
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     torch.use_deterministic_algorithms(True)
-    feature_extractor = ViTFeatureExtractor.from_pretrained(
-        encoder
-    )
+    feature_extractor = ViTFeatureExtractor.from_pretrained(encoder)
     tokenizer = AutoTokenizer.from_pretrained(decoder)
     processor = TrOCRProcessor(feature_extractor=feature_extractor, tokenizer=tokenizer)
     dataset = get_dataset(processor)
-    model = VisionEncoderDecoderModel.from_encoder_decoder_pretrained(
-        encoder, decoder
-    )
+    model = VisionEncoderDecoderModel.from_encoder_decoder_pretrained(encoder, decoder)
 
     model.config.decoder_start_token_id = processor.tokenizer.bos_token_id
     model.config.eos_token_id = processor.tokenizer.eos_token_id
