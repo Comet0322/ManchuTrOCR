@@ -42,7 +42,6 @@ def job(font_name, word, romanized, args):
 def main(args):
     # find all fonts
     fonts = [f for f in os.listdir(args.font_dir) if f.endswith(".ttf")]
-    fonts = ["XM_BiaoHei.ttf"]
     with open(args.word_file, "r") as f:
         word_list = f.read().splitlines()
     with open(args.transliter_file) as f:
