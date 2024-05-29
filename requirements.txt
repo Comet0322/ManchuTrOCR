@@ -6,3 +6,4 @@ albumentations
 transformers
 accelerate
 datasets
+jiwer
