@@ -1,0 +1,8 @@
+tqdm
+pandas
+albumentations
+# torch
+# torchvision
+transformers
+accelerate
+datasets
