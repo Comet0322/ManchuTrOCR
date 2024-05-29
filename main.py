@@ -7,9 +7,9 @@ from typing import Any, List, Mapping, Optional, Tuple, Union
 import torch
 import transformers
 from datasets import load_metric
-from transformers import (AutoConfig, HfArgumentParser, Trainer,
+from transformers import (AutoConfig, AutoTokenizer, HfArgumentParser, Trainer,
                           TrainingArguments, TrOCRProcessor,
-                          VisionEncoderDecoderModel)
+                          VisionEncoderDecoderModel, ViTFeatureExtractor)
 from transformers.trainer import EvalPrediction
 from transformers.trainer_utils import get_last_checkpoint
 
@@ -38,6 +38,8 @@ def compute_metrics(
 
 
 if __name__ == "__main__":
+    encoder = "google/vit-base-patch16-224-in21k"
+    decoder = "xlm-roberta-base"
     training_args = TrainingArguments(
         output_dir="./output",
         fp16=True,
@@ -55,6 +57,7 @@ if __name__ == "__main__":
         # save_steps=10,
         report_to="wandb",
         run_name="manchu-ocr",
+        # torch_compile = True,
     )
     logger = logging.getLogger(__name__)
 
@@ -80,15 +83,23 @@ if __name__ == "__main__":
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     torch.use_deterministic_algorithms(True)
-    dataset, processor = get_dataset()
-
-    model = VisionEncoderDecoderModel.from_pretrained(
-        "microsoft/trocr-base-handwritten"
+    feature_extractor = ViTFeatureExtractor.from_pretrained(
+        encoder
     )
-    model.config.decoder_start_token_id = processor.tokenizer.cls_token_id
+    tokenizer = AutoTokenizer.from_pretrained(decoder)
+    processor = TrOCRProcessor(feature_extractor=feature_extractor, tokenizer=tokenizer)
+    dataset = get_dataset(processor)
+    model = VisionEncoderDecoderModel.from_encoder_decoder_pretrained(
+        encoder, decoder
+    )
+
+    model.config.decoder_start_token_id = processor.tokenizer.bos_token_id
+    model.config.eos_token_id = processor.tokenizer.eos_token_id
     model.config.pad_token_id = processor.tokenizer.pad_token_id
     model.config.vocab_size = model.config.decoder.vocab_size
-
+    model.resize_token_embeddings(len(processor.tokenizer))
+    assert model.config.decoder.is_decoder is True
+    assert model.config.decoder.add_cross_attention is True
     eval_compute_metrics_fn = partial(compute_metrics, processor=processor)
 
     checkpoint = None
